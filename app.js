@@ -611,7 +611,7 @@ class RecipeApp {
       return;
     }
 
-    this.setStatus('Searching recipes online...');
+    this.logInfo('Searching recipes online...');
     resultsRoot.innerHTML = '<p class="muted">Searching...</p>';
 
     try {
@@ -652,7 +652,7 @@ class RecipeApp {
         .join('');
 
       this.internetResults = deduped;
-      this.setStatus(`Found ${deduped.length} internet recipes from multiple sources.`, true);
+      this.logInfo(`Found ${deduped.length} internet recipes from multiple sources.`);
     } catch (error) {
       resultsRoot.innerHTML = '<p class="muted">Could not load internet recipes.</p>';
       this.setStatus('Internet import failed. Check connection and try again.');
@@ -753,7 +753,7 @@ class RecipeApp {
 
     this.recipes.push(recipe);
     this.saveData(true);
-    this.setStatus('Internet recipe saved to diary.', true);
+    this.logInfo('Internet recipe saved to diary.');
   }
 
   importDummyJsonResult(item) {
@@ -792,7 +792,7 @@ class RecipeApp {
 
     this.recipes.push(recipe);
     this.saveData(true);
-    this.setStatus('Internet recipe saved to diary.', true);
+    this.logInfo('Internet recipe saved to diary.');
   }
 
   parseMeasure(measureText) {
