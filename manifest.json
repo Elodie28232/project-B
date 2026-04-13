@@ -1,0 +1,18 @@
+{
+  "name": "Pantry Pal - Recipe Diary",
+  "short_name": "PantryPal",
+  "description": "Recipe diary and automatic shopping list with serving-aware ingredient totals.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#fffaf3",
+  "theme_color": "#ff7a59",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

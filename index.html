@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#ff7a59">
+  <title>Pantry Pal</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="manifest" href="manifest.json">
+   <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header>
+      <h1>Pantry Pal</h1>
+      <nav>
+        <button type="button" class="tab active" data-view="diary" onclick="app.switchView('diary', this)">Recipe Diary</button>
+        <button type="button" class="tab" data-view="shopping" onclick="app.switchView('shopping', this)">Shopping List</button>
+        <button type="button" class="tab" data-view="import" onclick="app.switchView('import', this)">Import</button>
+        <button type="button" class="tab" data-view="sync" onclick="app.switchView('sync', this)">Sync Devices</button>
+      </nav>
+    </header>
+
+    <section class="content">
+      <div id="status-message" class="status"></div>
+
+      <section id="diary-view" class="view fade-in">
+        <div class="grid">
+          <div class="col-7">
+            <div class="panel">
+              <div class="row between">
+                <h2>Your Saved Recipes</h2>
+              </div>
+              <div class="mt-6">
+                <label for="recipe-search">Search your diary</label>
+                <input id="recipe-search" type="text" placeholder="Try: pasta, mushroom, soup..." oninput="app.setSearch(this.value)">
+              </div>
+              <div id="recipe-list"></div>
+            </div>
+          </div>
+
+          <div class="col-5">
+            <div id="recipe-detail" class="panel hidden">
+              <div class="row between">
+                <h2>Recipe Details</h2>
+                <button type="button" class="btn" onclick="app.closeRecipeView()">Close</button>
+              </div>
+              <div id="recipe-detail-body" class="mt-5"></div>
+            </div>
+
+            <div class="panel">
+              <h2>Quick Backup</h2>
+              <div class="row">
+                <button type="button" class="btn" onclick="app.exportRecipes()">Export JSON</button>
+                <button type="button" class="btn" onclick="app.triggerImportFile()">Import JSON File</button>
+                <input id="import-file" type="file" accept="application/json" class="hidden" onchange="app.importFromFile(event)">
+              </div>
+              <p class="tiny">Use this for easy backup and restore.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="shopping-view" class="view hidden fade-in">
+        <div class="grid">
+          <div class="col-6">
+            <div class="panel">
+              <h2>Recipe Servings</h2>
+              <p class="muted">Adjust how many people each recipe should feed.</p>
+              <div id="active-recipes"></div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="panel">
+              <h2>Aggregated Shopping List</h2>
+              <p class="muted">Compatible units are merged automatically.</p>
+              <div id="shopping-list-output"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="import-view" class="view hidden fade-in">
+        <div class="grid">
+          <div class="col-6">
+            <div id="recipe-form" class="panel">
+              <div class="row between">
+                <h2 id="form-title">Add Recipe</h2>
+                <button type="button" class="btn" onclick="app.showAddForm()">Clear</button>
+              </div>
+              <div class="row">
+                <div class="grow-min-220">
+                  <label for="recipe-name">Recipe name</label>
+                  <input type="text" id="recipe-name" placeholder="Creamy mushroom pasta">
+                </div>
+                <div class="w-120">
+                  <label for="recipe-servings">Base servings</label>
+                  <input type="number" id="recipe-servings" min="1" step="1" placeholder="2">
+                </div>
+              </div>
+
+              <div class="mt-45">
+                <label for="recipe-source">Source link (optional)</label>
+                <input type="url" id="recipe-source" placeholder="https://...">
+              </div>
+
+              <div class="mt-45">
+                <label for="recipe-notes">Notes (optional)</label>
+                <textarea id="recipe-notes" placeholder="Tips, swaps, reminders..."></textarea>
+              </div>
+
+              <div class="mt-45">
+                <label for="recipe-instructions">Instructions (optional)</label>
+                <textarea id="recipe-instructions" placeholder="Step-by-step preparation..."></textarea>
+              </div>
+
+              <h3 class="mt-9">Ingredients</h3>
+              <div id="ingredient-inputs"></div>
+
+              <div class="row mt-6">
+                <button type="button" class="btn" onclick="app.addIngredientField()">Add Ingredient</button>
+                <button id="save-recipe-btn" type="button" class="btn primary" onclick="app.saveRecipe()">Save Recipe</button>
+                <button type="button" class="btn" onclick="app.hideForm()">Cancel</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-6">
+            <div class="panel">
+              <h2>Search Internet Recipes</h2>
+              <div class="row">
+                <input id="internet-query" type="text" placeholder="Search meals online, e.g. lasagna">
+                <button type="button" class="btn primary" onclick="app.searchInternetRecipes()">Search</button>
+              </div>
+              <div id="internet-results"></div>
+            </div>
+
+            <div class="panel">
+              <h2>Paste Recipe JSON</h2>
+              <p class="tiny">Accepts a single recipe object or an array of recipes.</p>
+              <textarea id="paste-json" placeholder='{"name":"Recipe","baseServings":2,"ingredients":[{"name":"egg","quantity":2,"unit":"pcs"}]}'></textarea>
+              <div class="row mt-5">
+                <button type="button" class="btn success" onclick="app.importPastedJson()">Import JSON</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="sync-view" class="view hidden fade-in">
+        <div class="grid">
+          <div class="col-6">
+            <div class="panel">
+              <h2>Host Session (Device A)</h2>
+              <p class="tiny">Create an invite token, share it with device B, then paste back its answer token.</p>
+              <div class="row">
+                <button type="button" class="btn primary" onclick="app.createSyncInvite()">Create Invite</button>
+                <button type="button" class="btn" onclick="app.copyText('sync-offer')">Copy Invite</button>
+              </div>
+              <label for="sync-offer" class="mt-5">Invite token</label>
+              <textarea id="sync-offer" placeholder="Invite token appears here"></textarea>
+              <img id="sync-offer-qr" class="qr" alt="Invite QR" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==">
+              <label for="sync-answer" class="mt-5">Paste answer token from device B</label>
+              <textarea id="sync-answer" placeholder="Paste answer token here"></textarea>
+              <div class="row mt-5">
+                <button type="button" class="btn success" onclick="app.applySyncAnswer()">Connect Devices</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-6">
+            <div class="panel">
+              <h2>Join Session (Device B)</h2>
+              <p class="tiny">Paste invite token from device A, then create answer token and send it back.</p>
+              <label for="join-offer">Paste invite token</label>
+              <textarea id="join-offer" placeholder="Paste invite token here"></textarea>
+              <div class="row mt-5">
+                <button type="button" class="btn primary" onclick="app.joinSyncInvite()">Create Answer</button>
+                <button type="button" class="btn" onclick="app.copyText('join-answer')">Copy Answer</button>
+              </div>
+              <label for="join-answer" class="mt-5">Answer token</label>
+              <textarea id="join-answer" placeholder="Answer token appears here"></textarea>
+              <img id="join-answer-qr" class="qr" alt="Answer QR" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==">
+            </div>
+          </div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
