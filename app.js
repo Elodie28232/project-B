@@ -1266,6 +1266,29 @@ class RecipeApp {
     return `Import complete: ${summary.added} added, ${summary.updated} updated.`;
   }
 
+  encodeSyncToken(description) {
+    return btoa(unescape(encodeURIComponent(JSON.stringify(description))));
+  }
+
+  decodeSyncToken(token, expectedType) {
+    const compact = String(token || '')
+      .trim()
+      .replace(/\s+/g, '')
+      .replace(/-/g, '+')
+      .replace(/_/g, '/');
+
+    const normalized = compact.padEnd(Math.ceil(compact.length / 4) * 4, '=');
+    const parsed = JSON.parse(decodeURIComponent(escape(atob(normalized))));
+
+    if (!parsed || typeof parsed !== 'object' || !parsed.type || !parsed.sdp) {
+      throw new Error('Token format is invalid');
+    }
+    if (expectedType && parsed.type !== expectedType) {
+      throw new Error(`Expected a ${expectedType} token but got ${parsed.type}`);
+    }
+    return parsed;
+  }
+
   async createSyncInvite() {
     try {
       this.destroyPeer();
@@ -1277,7 +1300,7 @@ class RecipeApp {
       await peer.setLocalDescription(offer);
       await this.waitIceGathering(peer);
 
-      const token = btoa(unescape(encodeURIComponent(JSON.stringify(peer.localDescription))));
+      const token = this.encodeSyncToken(peer.localDescription);
       document.getElementById('sync-offer').value = token;
       this.renderQr('sync-offer-qr', token);
       this.setStatus('Invite token generated. Send it to device B.', true);
@@ -1297,18 +1320,18 @@ class RecipeApp {
       this.destroyPeer();
       const peer = this.newPeer(false);
 
-      const offer = JSON.parse(decodeURIComponent(escape(atob(token))));
+      const offer = this.decodeSyncToken(token, 'offer');
       await peer.setRemoteDescription(offer);
       const answer = await peer.createAnswer();
       await peer.setLocalDescription(answer);
       await this.waitIceGathering(peer);
 
-      const answerToken = btoa(unescape(encodeURIComponent(JSON.stringify(peer.localDescription))));
+      const answerToken = this.encodeSyncToken(peer.localDescription);
       document.getElementById('join-answer').value = answerToken;
       this.renderQr('join-answer-qr', answerToken);
       this.setStatus('Answer token created. Send it back to device A.', true);
     } catch (error) {
-      this.setStatus('Invalid invite token or sync setup failed.');
+      this.setStatus(`Invalid invite token or sync setup failed: ${error.message}`);
     }
   }
 
@@ -1320,12 +1343,17 @@ class RecipeApp {
     }
 
     try {
-      const answer = JSON.parse(decodeURIComponent(escape(atob(token))));
+      if (this.syncState.peer.signalingState !== 'have-local-offer') {
+        this.setStatus('This invite session is stale. Create a new invite and answer pair.');
+        return;
+      }
+
+      const answer = this.decodeSyncToken(token, 'answer');
       await this.syncState.peer.setRemoteDescription(answer);
       this.setStatus('Devices connected. Live sync is active.', true);
       this.broadcastState();
     } catch (error) {
-      this.setStatus('Could not apply answer token.');
+      this.setStatus(`Could not apply answer token: ${error.message}`);
     }
   }
 
