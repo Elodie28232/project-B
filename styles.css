@@ -294,6 +294,61 @@
       width: 100%;
    }
 
+   .shopping-selector {
+      border: 1px solid #f0ded4;
+      border-radius: 12px;
+      background: #fffdfb;
+      overflow: hidden;
+   }
+
+   .shopping-selector-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      cursor: pointer;
+      list-style: none;
+      padding: 0.75rem 0.85rem;
+      font-weight: 700;
+      color: #8e452e;
+      background: #fff7f2;
+      border-bottom: 1px solid #f4e2d8;
+   }
+
+   .shopping-selector-toggle::-webkit-details-marker {
+      display: none;
+   }
+
+   .shopping-selector[open] .shopping-selector-toggle {
+      background: #fff3ec;
+   }
+
+   .shopping-selector-body {
+      padding: 0 0.85rem 0.85rem;
+   }
+
+   .shopping-add-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 96px auto;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 0.45rem;
+      padding: 0.55rem;
+      border: 1px solid #f2dfd3;
+      border-radius: 10px;
+      background: #fff;
+   }
+
+   .shopping-add-name {
+      min-width: 0;
+   }
+
+   .shopping-add-name strong {
+      display: block;
+      line-height: 1.3;
+      word-break: break-word;
+   }
+
    .shopping-item.done {
       opacity: 0.6;
    }
@@ -391,6 +446,10 @@
 
       .shopping-recipe-row {
          grid-template-columns: 28px minmax(0, 1fr);
+      }
+
+      .shopping-add-row {
+         grid-template-columns: 1fr;
       }
 
       .shopping-recipe-servings-input {

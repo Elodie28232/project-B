@@ -21,7 +21,6 @@
         <button type="button" class="tab active" data-view="diary" onclick="app.switchView('diary', this)">Recipe Diary</button>
         <button type="button" class="tab" data-view="shopping" onclick="app.switchView('shopping', this)">Shopping List</button>
         <button type="button" class="tab" data-view="import" onclick="app.switchView('import', this)">Import</button>
-        <button type="button" class="tab" data-view="sync" onclick="app.switchView('sync', this)">Sync Devices</button>
       </nav>
     </header>
 
@@ -67,18 +66,40 @@
 
       <section id="shopping-view" class="view hidden fade-in">
         <div class="grid">
-          <div class="col-6">
-            <div class="panel">
-              <h2>Recipe Servings</h2>
-              <p class="muted">Adjust how many people each recipe should feed.</p>
-              <div id="active-recipes"></div>
-            </div>
-          </div>
-          <div class="col-6">
+          <div class="col-7">
             <div class="panel">
               <h2>Aggregated Shopping List</h2>
               <p class="muted">Compatible units are merged automatically.</p>
               <div id="shopping-list-output"></div>
+            </div>
+          </div>
+          <div class="col-5">
+            <div class="panel">
+              <h2>Manage Recipes</h2>
+              <p class="muted">Pick recipes and servings without pushing the shopping list down.</p>
+
+              <details id="shopping-selector" class="shopping-selector">
+                <summary class="shopping-selector-toggle">
+                  <span>Add or adjust recipes</span>
+                  <span id="shopping-selected-count" class="tiny">0 selected</span>
+                </summary>
+
+                <div class="shopping-selector-body mt-6">
+                  <label for="shopping-recipe-search">Search recipe to add</label>
+                  <input
+                    id="shopping-recipe-search"
+                    type="text"
+                    placeholder="Type recipe name or ingredient..."
+                    oninput="app.setShoppingSearch(this.value)"
+                  >
+
+                  <div id="shopping-search-results" class="mt-6"></div>
+
+                  <h3 class="mt-9">Selected Recipes</h3>
+                  <p class="muted">Only these recipes are included in the list below.</p>
+                  <div id="active-recipes"></div>
+                </div>
+              </details>
             </div>
           </div>
         </div>
@@ -151,44 +172,6 @@
         </div>
       </section>
 
-      <section id="sync-view" class="view hidden fade-in">
-        <div class="grid">
-          <div class="col-6">
-            <div class="panel">
-              <h2>Host Session (Device A)</h2>
-              <p class="tiny">Create an invite token, share it with device B, then paste back its answer token.</p>
-              <div class="row">
-                <button type="button" class="btn primary" onclick="app.createSyncInvite()">Create Invite</button>
-                <button type="button" class="btn" onclick="app.copyText('sync-offer')">Copy Invite</button>
-              </div>
-              <label for="sync-offer" class="mt-5">Invite token</label>
-              <textarea id="sync-offer" placeholder="Invite token appears here"></textarea>
-              <img id="sync-offer-qr" class="qr" alt="Invite QR" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==">
-              <label for="sync-answer" class="mt-5">Paste answer token from device B</label>
-              <textarea id="sync-answer" placeholder="Paste answer token here"></textarea>
-              <div class="row mt-5">
-                <button type="button" class="btn success" onclick="app.applySyncAnswer()">Connect Devices</button>
-              </div>
-            </div>
-          </div>
-
-          <div class="col-6">
-            <div class="panel">
-              <h2>Join Session (Device B)</h2>
-              <p class="tiny">Paste invite token from device A, then create answer token and send it back.</p>
-              <label for="join-offer">Paste invite token</label>
-              <textarea id="join-offer" placeholder="Paste invite token here"></textarea>
-              <div class="row mt-5">
-                <button type="button" class="btn primary" onclick="app.joinSyncInvite()">Create Answer</button>
-                <button type="button" class="btn" onclick="app.copyText('join-answer')">Copy Answer</button>
-              </div>
-              <label for="join-answer" class="mt-5">Answer token</label>
-              <textarea id="join-answer" placeholder="Answer token appears here"></textarea>
-              <img id="join-answer-qr" class="qr" alt="Answer QR" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==">
-            </div>
-          </div>
-        </div>
-      </section>
     </section>
 
   </main>

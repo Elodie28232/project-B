@@ -15,17 +15,11 @@ class RecipeApp {
     this.searchTerm = '';
     this.editingId = null;
     this.selectedRecipeId = null;
+    this.shoppingSearchTerm = '';
     this.isSavingRecipe = false;
     this.isLoading = false;
     this.statusTimer = null;
     this.subscriptions = [];
-    this.syncState = {
-      peer: null,
-      channel: null,
-      isHost: false,
-      pendingBroadcast: false,
-      incomingChunks: {}
-    };
 
     this.ingredientProfiles = {
       milk: ['ml', 'cl', 'l'],
@@ -443,15 +437,46 @@ class RecipeApp {
   renderShoppingList() {
     const listContainer = document.getElementById('shopping-list-output');
     const recipesContainer = document.getElementById('active-recipes');
+    const searchResultsContainer = document.getElementById('shopping-search-results');
+    const selectedCount = document.getElementById('shopping-selected-count');
+    const selector = document.getElementById('shopping-selector');
+    if (!listContainer || !recipesContainer) {
+      return;
+    }
+
     recipesContainer.innerHTML = '';
+    if (searchResultsContainer) {
+      searchResultsContainer.innerHTML = '';
+    }
 
     if (this.recipes.length === 0) {
       recipesContainer.innerHTML = '<p class="muted">Add a recipe to start.</p>';
       listContainer.innerHTML = '<p class="muted">Shopping list will appear here.</p>';
+      if (selectedCount) {
+        selectedCount.textContent = '0 selected';
+      }
       return;
     }
 
-    this.recipes.forEach((recipe, index) => {
+    const selectedRecipes = this.recipes.filter(recipe => recipe.includeInShopping);
+    if (selectedCount) {
+      selectedCount.textContent = `${selectedRecipes.length} selected`;
+    }
+    if (selector) {
+      if (selectedRecipes.length === 0) {
+        selector.setAttribute('open', 'open');
+      }
+    }
+
+    if (selectedRecipes.length === 0) {
+      recipesContainer.innerHTML = '<p class="muted">No selected recipes yet. Search and add one above.</p>';
+    }
+
+    selectedRecipes.forEach((recipe) => {
+      const index = this.recipes.findIndex(item => item.id === recipe.id);
+      if (index < 0) {
+        return;
+      }
       const row = document.createElement('div');
       row.className = 'recipe-card';
       row.innerHTML = `
@@ -464,6 +489,46 @@ class RecipeApp {
       `;
       recipesContainer.appendChild(row);
     });
+
+    if (searchResultsContainer) {
+      const term = this.shoppingSearchTerm.trim().toLowerCase();
+      if (!term) {
+        searchResultsContainer.innerHTML = '<p class="muted">Search to quickly add recipes without scrolling the full list.</p>';
+      } else {
+        const candidates = this.recipes.filter(recipe => {
+          if (recipe.includeInShopping) {
+            return false;
+          }
+          if (recipe.name.toLowerCase().includes(term)) {
+            return true;
+          }
+          return recipe.ingredients.some(ing => String(ing.name || '').toLowerCase().includes(term));
+        });
+
+        if (candidates.length === 0) {
+          searchResultsContainer.innerHTML = '<p class="muted">No matching recipes to add.</p>';
+        } else {
+          searchResultsContainer.innerHTML = candidates
+            .slice(0, 12)
+            .map(recipe => {
+              const index = this.recipes.findIndex(item => item.id === recipe.id);
+              const inputId = `shopping-add-servings-${index}`;
+              const defaultServings = Number(recipe.desiredServings) > 0 ? Number(recipe.desiredServings) : Number(recipe.baseServings) || 1;
+              return `
+                <div class="shopping-add-row">
+                  <div class="shopping-add-name">
+                    <strong>${this.escapeHtml(recipe.name)}</strong>
+                    <span class="tiny">Base: ${this.formatQty(recipe.baseServings)} people</span>
+                  </div>
+                  <input id="${inputId}" type="number" min="1" step="1" value="${this.formatQty(defaultServings)}">
+                  <button type="button" class="btn" onclick="app.addRecipeToShopping(${index}, document.getElementById('${inputId}').value)">Add</button>
+                </div>
+              `;
+            })
+            .join('');
+        }
+      }
+    }
 
     const aggregated = this.aggregateIngredients();
     if (aggregated.length === 0) {
@@ -530,7 +595,28 @@ class RecipeApp {
       return;
     }
     recipe.includeInShopping = Boolean(checked);
-    this.saveData(false);
+    this.saveRecipeShoppingState(recipe);
+  }
+
+  setShoppingSearch(value) {
+    this.shoppingSearchTerm = String(value || '');
+    this.renderShoppingList();
+  }
+
+  addRecipeToShopping(index, servingsValue) {
+    const recipe = this.recipes[index];
+    if (!recipe) {
+      return;
+    }
+    const servings = Number(servingsValue);
+    const fallback = Number(recipe.baseServings) > 0 ? Number(recipe.baseServings) : 1;
+    recipe.includeInShopping = true;
+    recipe.desiredServings = Number.isFinite(servings) && servings > 0 ? servings : fallback;
+    const selector = document.getElementById('shopping-selector');
+    if (selector) {
+      selector.removeAttribute('open');
+    }
+    this.saveRecipeShoppingState(recipe);
   }
 
   toggleShoppingItem(encodedKey, checked) {
@@ -885,10 +971,10 @@ class RecipeApp {
     }
     const servings = Number(value);
     recipe.desiredServings = Number.isFinite(servings) && servings >= 0 ? servings : 0;
-    this.saveServing(recipe);
+    this.saveRecipeShoppingState(recipe);
   }
 
-  async saveServing(recipe) {
+  async saveRecipeShoppingState(recipe) {
     try {
       if (!this.supabase) {
         throw new Error('Supabase not connected');
@@ -896,7 +982,10 @@ class RecipeApp {
 
       const { error } = await this.supabase
         .from('recipes')
-        .update({ desired_servings: recipe.desiredServings })
+        .update({
+          include_in_shopping: recipe.includeInShopping !== false,
+          desired_servings: recipe.desiredServings
+        })
         .eq('id', recipe.id);
 
       if (error) {
@@ -905,7 +994,7 @@ class RecipeApp {
 
       this.render();
     } catch (error) {
-      this.logInfo(`Failed to save servings: ${error.message}`);
+      this.logInfo(`Failed to save shopping settings: ${error.message}`);
     }
   }
 
@@ -1604,282 +1693,6 @@ class RecipeApp {
       return `Imported 0 recipes from ${parsedCount} parsed entries.`;
     }
     return `Import complete: ${summary.added} added, ${summary.updated} updated.`;
-  }
-
-  encodeSyncToken(description) {
-    return btoa(unescape(encodeURIComponent(JSON.stringify(description))));
-  }
-
-  decodeSyncToken(token, expectedType) {
-    const compact = String(token || '')
-      .trim()
-      .replace(/\s+/g, '')
-      .replace(/-/g, '+')
-      .replace(/_/g, '/');
-
-    const normalized = compact.padEnd(Math.ceil(compact.length / 4) * 4, '=');
-    const parsed = JSON.parse(decodeURIComponent(escape(atob(normalized))));
-
-    if (!parsed || typeof parsed !== 'object' || !parsed.type || !parsed.sdp) {
-      throw new Error('Token format is invalid');
-    }
-    if (expectedType && parsed.type !== expectedType) {
-      throw new Error(`Expected a ${expectedType} token but got ${parsed.type}`);
-    }
-    return parsed;
-  }
-
-  async createSyncInvite() {
-    try {
-      this.destroyPeer();
-      const peer = this.newPeer(true);
-      const channel = peer.createDataChannel('recipes-sync');
-      this.wireDataChannel(channel);
-
-      const offer = await peer.createOffer();
-      await peer.setLocalDescription(offer);
-      await this.waitIceGathering(peer);
-
-      const token = this.encodeSyncToken(peer.localDescription);
-      document.getElementById('sync-offer').value = token;
-      this.renderQr('sync-offer-qr', token);
-      this.setStatus('Invite token generated. Send it to device B.', true);
-    } catch (error) {
-      this.setStatus('Could not create sync invite.');
-    }
-  }
-
-  async joinSyncInvite() {
-    const token = document.getElementById('join-offer').value.trim();
-    if (!token) {
-      this.setStatus('Paste invite token from device A first.');
-      return;
-    }
-
-    try {
-      this.destroyPeer();
-      const peer = this.newPeer(false);
-
-      const offer = this.decodeSyncToken(token, 'offer');
-      await peer.setRemoteDescription(offer);
-      const answer = await peer.createAnswer();
-      await peer.setLocalDescription(answer);
-      await this.waitIceGathering(peer);
-
-      const answerToken = this.encodeSyncToken(peer.localDescription);
-      document.getElementById('join-answer').value = answerToken;
-      this.renderQr('join-answer-qr', answerToken);
-      this.setStatus('Answer token created. Send it back to device A.', true);
-    } catch (error) {
-      this.setStatus(`Invalid invite token or sync setup failed: ${error.message}`);
-    }
-  }
-
-  async applySyncAnswer() {
-    const token = document.getElementById('sync-answer').value.trim();
-    if (!token || !this.syncState.peer) {
-      this.setStatus('Create invite first, then paste answer token.');
-      return;
-    }
-
-    try {
-      if (this.syncState.peer.signalingState !== 'have-local-offer') {
-        this.setStatus('This invite session is stale. Create a new invite and answer pair.');
-        return;
-      }
-
-      const answer = this.decodeSyncToken(token, 'answer');
-      await this.syncState.peer.setRemoteDescription(answer);
-      this.setStatus('Devices connected. Live sync is active.', true);
-      this.broadcastState();
-    } catch (error) {
-      this.setStatus(`Could not apply answer token: ${error.message}`);
-    }
-  }
-
-  newPeer(isHost) {
-    const peer = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-    });
-
-    this.syncState.peer = peer;
-    this.syncState.isHost = isHost;
-
-    peer.ondatachannel = event => {
-      this.wireDataChannel(event.channel);
-    };
-
-    peer.onconnectionstatechange = () => {
-      const state = peer.connectionState;
-      if (state === 'connected') {
-        this.setStatus('Devices connected. Live sync is active.', true);
-        if (this.syncState.pendingBroadcast) {
-          this.broadcastState();
-        }
-      } else if (state === 'failed' || state === 'disconnected' || state === 'closed') {
-        this.setStatus('Sync connection ended.');
-      }
-    };
-
-    return peer;
-  }
-
-  wireDataChannel(channel) {
-    this.syncState.channel = channel;
-
-    channel.onopen = () => {
-      this.setStatus('Data channel open. Recipes now mirror across devices.', true);
-      this.syncState.pendingBroadcast = false;
-      this.broadcastState();
-    };
-
-    channel.onclose = () => {
-      this.setStatus('Sync channel closed. Reconnect from Sync Devices tab.');
-    };
-
-    channel.onerror = () => {
-      this.setStatus('Sync channel error. Reconnect from Sync Devices tab.');
-    };
-
-    channel.onmessage = event => {
-      try {
-        const message = JSON.parse(event.data);
-        if (message.type === 'full-sync' && Array.isArray(message.payload)) {
-          this.applyIncomingRecipes(message.payload);
-          return;
-        }
-
-        if (message.type === 'full-sync-start' && message.id && Number.isInteger(message.total)) {
-          this.syncState.incomingChunks[message.id] = {
-            total: message.total,
-            chunks: new Array(message.total),
-            received: 0
-          };
-          return;
-        }
-
-        if (message.type === 'full-sync-chunk' && message.id && Number.isInteger(message.index) && typeof message.data === 'string') {
-          const state = this.syncState.incomingChunks[message.id];
-          if (!state || message.index < 0 || message.index >= state.total) {
-            return;
-          }
-
-          if (!state.chunks[message.index]) {
-            state.chunks[message.index] = message.data;
-            state.received += 1;
-          }
-
-          if (state.received === state.total) {
-            const joined = state.chunks.join('');
-            delete this.syncState.incomingChunks[message.id];
-            const payload = JSON.parse(joined);
-            if (Array.isArray(payload)) {
-              this.applyIncomingRecipes(payload);
-            }
-          }
-        }
-      } catch (error) {
-        this.setStatus('Received invalid sync payload.');
-      }
-    };
-  }
-
-  applyIncomingRecipes(payload) {
-    this.recipes = payload.map(item => this.normalizeRecipe(item)).filter(Boolean);
-    this.saveData(false);
-    this.logInfo('Received updates from the other device.');
-  }
-
-  broadcastState() {
-    const channel = this.syncState.channel;
-    if (!channel || channel.readyState !== 'open') {
-      this.syncState.pendingBroadcast = true;
-      return;
-    }
-
-    try {
-      const payload = JSON.stringify(this.recipes);
-      const maxChunkSize = 12000;
-
-      if (payload.length <= maxChunkSize) {
-        channel.send(
-          JSON.stringify({
-            type: 'full-sync',
-            payload: this.recipes
-          })
-        );
-        return;
-      }
-
-      const syncId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const chunks = [];
-      for (let i = 0; i < payload.length; i += maxChunkSize) {
-        chunks.push(payload.slice(i, i + maxChunkSize));
-      }
-
-      channel.send(JSON.stringify({ type: 'full-sync-start', id: syncId, total: chunks.length }));
-      chunks.forEach((data, index) => {
-        channel.send(JSON.stringify({ type: 'full-sync-chunk', id: syncId, index, data }));
-      });
-    } catch (error) {
-      this.syncState.pendingBroadcast = true;
-      this.setStatus('Sync send failed. Changes will resend when channel is available.');
-    }
-  }
-
-  destroyPeer() {
-    if (this.syncState.channel) {
-      this.syncState.channel.close();
-    }
-    if (this.syncState.peer) {
-      this.syncState.peer.close();
-    }
-    this.syncState.peer = null;
-    this.syncState.channel = null;
-    this.syncState.isHost = false;
-    this.syncState.pendingBroadcast = false;
-    this.syncState.incomingChunks = {};
-  }
-
-  waitIceGathering(peer) {
-    if (peer.iceGatheringState === 'complete') {
-      return Promise.resolve();
-    }
-    return new Promise(resolve => {
-      const checkState = () => {
-        if (peer.iceGatheringState === 'complete') {
-          peer.removeEventListener('icegatheringstatechange', checkState);
-          resolve();
-        }
-      };
-      peer.addEventListener('icegatheringstatechange', checkState);
-      setTimeout(() => {
-        peer.removeEventListener('icegatheringstatechange', checkState);
-        resolve();
-      }, 2500);
-    });
-  }
-
-  renderQr(imageId, text) {
-    const image = document.getElementById(imageId);
-    if (!image) {
-      return;
-    }
-    const safePayload = encodeURIComponent(text.slice(0, 1800));
-    image.src = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${safePayload}`;
-    image.style.display = 'block';
-  }
-
-  copyText(textareaId) {
-    const textarea = document.getElementById(textareaId);
-    if (!textarea || !textarea.value) {
-      this.setStatus('Nothing to copy yet.');
-      return;
-    }
-    navigator.clipboard.writeText(textarea.value).then(
-      () => this.setStatus('Copied to clipboard.', true),
-      () => this.setStatus('Could not copy. Use manual copy.')
-    );
   }
 
   setStatus(message, isPositive = false, autoClearMs = 0) {
