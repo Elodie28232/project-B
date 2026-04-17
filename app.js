@@ -393,15 +393,26 @@ class RecipeApp {
       return;
     }
 
+    const baseServings = Number(recipe.baseServings) > 0 ? Number(recipe.baseServings) : 1;
+    const detailServings = Number(recipe.desiredServings) > 0 ? Number(recipe.desiredServings) : baseServings;
+    const detailRatio = detailServings / baseServings;
+
     const detailHtml = `
       <h3>${this.escapeHtml(recipe.name)}</h3>
-      <p class="muted">Base servings: ${this.formatQty(recipe.baseServings)}</p>
+      <p class="muted">Base servings: ${this.formatQty(baseServings)}</p>
+      <div class="row mt-6">
+        <div class="w-120">
+          <label for="recipe-detail-servings">Servings</label>
+          <input id="recipe-detail-servings" type="number" min="1" step="1" value="${this.formatQty(detailServings)}" onchange="app.updateDetailServings(this.value)">
+        </div>
+        <p class="tiny">Ingredient amounts below scale with this value.</p>
+      </div>
       ${recipe.sourceUrl ? `<p><a href="${this.escapeHtml(recipe.sourceUrl)}" target="_blank" rel="noopener noreferrer">Open source</a></p>` : ''}
       ${recipe.notes ? `<p><strong>Notes</strong><br>${this.escapeHtml(recipe.notes).replace(/\n/g, '<br>')}</p>` : '<p class="muted">No notes added.</p>'}
       ${recipe.instructions ? `<p><strong>Instructions</strong><br>${this.escapeHtml(recipe.instructions).replace(/\n/g, '<br>')}</p>` : '<p class="muted">No instructions added.</p>'}
       <p><strong>Ingredients</strong></p>
       <ul>
-        ${recipe.ingredients.map(ing => `<li>${this.formatQty(ing.quantity)} ${this.escapeHtml(ing.unit)} ${this.escapeHtml(ing.name)}</li>`).join('')}
+        ${recipe.ingredients.map(ing => `<li>${this.formatQty(Number(ing.quantity) * detailRatio)} ${this.escapeHtml(ing.unit)} ${this.escapeHtml(ing.name)}</li>`).join('')}
       </ul>
     `;
 
@@ -432,6 +443,22 @@ class RecipeApp {
   closeRecipeView() {
     this.selectedRecipeId = null;
     this.renderRecipeDetail();
+  }
+
+  updateDetailServings(value) {
+    if (!this.selectedRecipeId) {
+      return;
+    }
+    const recipe = this.recipes.find(item => item.id === this.selectedRecipeId);
+    if (!recipe) {
+      return;
+    }
+    const servings = Number(value);
+    const fallback = Number(recipe.baseServings) > 0 ? Number(recipe.baseServings) : 1;
+    recipe.desiredServings = Number.isFinite(servings) && servings > 0 ? servings : fallback;
+    this.renderRecipeDetail();
+    this.renderShoppingList();
+    this.saveRecipeShoppingState(recipe);
   }
 
   renderShoppingList() {
