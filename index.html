@@ -191,8 +191,17 @@
       </section>
     </section>
 
-    <div id="recipe-detail-backdrop" class="modal-backdrop hidden" onclick="app.closeRecipeView()"></div>
   </main>
+
+  <div id="recipe-detail-mobile" class="mobile-recipe-modal hidden">
+    <div class="panel mobile-recipe-panel">
+      <div class="row between">
+        <h2>Recipe Details</h2>
+        <button type="button" class="btn" onclick="app.closeRecipeView()">Close</button>
+      </div>
+      <div id="recipe-detail-mobile-body" class="mt-5"></div>
+    </div>
+  </div>
 
   <!-- Supabase Client Library -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>

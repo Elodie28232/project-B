@@ -378,17 +378,15 @@ class RecipeApp {
   renderRecipeDetail() {
     const panel = document.getElementById('recipe-detail');
     const body = document.getElementById('recipe-detail-body');
-    const backdrop = document.getElementById('recipe-detail-backdrop');
-    if (!panel || !body) {
+    const mobileModal = document.getElementById('recipe-detail-mobile');
+    const mobileBody = document.getElementById('recipe-detail-mobile-body');
+    if (!panel || !body || !mobileModal || !mobileBody) {
       return;
     }
 
     if (!this.selectedRecipeId) {
       panel.classList.add('hidden');
-      panel.classList.remove('mobile-popup');
-      if (backdrop) {
-        backdrop.classList.add('hidden');
-      }
+      mobileModal.classList.add('hidden');
       document.body.classList.remove('no-scroll');
       return;
     }
@@ -396,23 +394,12 @@ class RecipeApp {
     const recipe = this.recipes.find(item => item.id === this.selectedRecipeId);
     if (!recipe) {
       panel.classList.add('hidden');
-      panel.classList.remove('mobile-popup');
-      if (backdrop) {
-        backdrop.classList.add('hidden');
-      }
+      mobileModal.classList.add('hidden');
       document.body.classList.remove('no-scroll');
       return;
     }
 
-    panel.classList.remove('hidden');
-    const isMobile = window.matchMedia('(max-width: 860px)').matches;
-    panel.classList.toggle('mobile-popup', isMobile);
-    if (backdrop) {
-      backdrop.classList.toggle('hidden', !isMobile);
-    }
-    document.body.classList.toggle('no-scroll', isMobile);
-
-    body.innerHTML = `
+    const detailHtml = `
       <h3>${this.escapeHtml(recipe.name)}</h3>
       <p class="muted">Base servings: ${this.formatQty(recipe.baseServings)}</p>
       ${recipe.sourceUrl ? `<p><a href="${this.escapeHtml(recipe.sourceUrl)}" target="_blank" rel="noopener noreferrer">Open source</a></p>` : ''}
@@ -423,6 +410,20 @@ class RecipeApp {
         ${recipe.ingredients.map(ing => `<li>${this.formatQty(ing.quantity)} ${this.escapeHtml(ing.unit)} ${this.escapeHtml(ing.name)}</li>`).join('')}
       </ul>
     `;
+
+    const isMobile = window.matchMedia('(max-width: 1024px) and (pointer: coarse), (max-width: 860px)').matches;
+
+    if (isMobile) {
+      panel.classList.add('hidden');
+      mobileModal.classList.remove('hidden');
+      mobileBody.innerHTML = detailHtml;
+      document.body.classList.add('no-scroll');
+    } else {
+      mobileModal.classList.add('hidden');
+      panel.classList.remove('hidden');
+      body.innerHTML = detailHtml;
+      document.body.classList.remove('no-scroll');
+    }
   }
 
   openRecipeView(index) {
