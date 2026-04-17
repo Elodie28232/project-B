@@ -341,8 +341,8 @@
    .modal-backdrop {
       position: fixed;
       inset: 0;
-      background: rgba(26, 22, 18, 0.45);
-      z-index: 1090;
+      background: rgba(26, 22, 18, 0.6);
+      z-index: 2500;
    }
 
    .fade-in {
@@ -401,10 +401,14 @@
          top: 50%;
          transform: translate(-50%, -50%);
          width: min(92vw, 560px);
-         max-height: 82vh;
+         max-height: calc(100vh - 1.5rem);
          overflow-y: auto;
+         -webkit-overflow-scrolling: touch;
+         overscroll-behavior: contain;
+         touch-action: pan-y;
+         background: #ffffff;
          margin: 0;
-         z-index: 1100;
+         z-index: 2600;
          box-shadow: 0 22px 48px rgba(44, 24, 17, 0.28);
       }
 
