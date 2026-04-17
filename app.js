@@ -20,6 +20,7 @@ class RecipeApp {
     this.isLoading = false;
     this.statusTimer = null;
     this.subscriptions = [];
+    this.sampleRecipesCache = null;
 
     this.ingredientProfiles = {
       milk: ['ml', 'cl', 'l'],
@@ -1037,12 +1038,14 @@ class RecipeApp {
     resultsRoot.innerHTML = '<p class="muted">Searching...</p>';
 
     try {
-      const [mealDbResults, dummyResults] = await Promise.all([
+      const [mealDbResults, dummyResults, forkifyResults, sampleApisResults] = await Promise.all([
         this.fetchMealDbResults(query),
-        this.fetchDummyJsonResults(query)
+        this.fetchDummyJsonResults(query),
+        this.fetchForkifyResults(query),
+        this.fetchSampleApisResults(query)
       ]);
 
-      const combined = [...mealDbResults, ...dummyResults];
+      const combined = [...mealDbResults, ...dummyResults, ...forkifyResults, ...sampleApisResults];
       const deduped = [];
       const seen = new Set();
 
@@ -1125,7 +1128,85 @@ class RecipeApp {
     }));
   }
 
-  importInternetResult(index) {
+  async fetchForkifyResults(query) {
+    try {
+      const searches = [query];
+      const firstToken = query.split(/\s+/).filter(Boolean)[0];
+      if (firstToken && firstToken.toLowerCase() !== query.toLowerCase()) {
+        searches.push(firstToken);
+      }
+
+      const out = [];
+      const seen = new Set();
+      for (const term of searches) {
+        const response = await fetch(`https://forkify-api.herokuapp.com/api/search?q=${encodeURIComponent(term)}`);
+        if (!response.ok) {
+          continue;
+        }
+        const payload = await response.json();
+        const recipes = Array.isArray(payload.recipes) ? payload.recipes : [];
+        recipes.forEach(recipe => {
+          const key = String(recipe.recipe_id || recipe.title || '').toLowerCase();
+          if (!key || seen.has(key)) {
+            return;
+          }
+          seen.add(key);
+          out.push({
+            provider: 'Forkify',
+            name: recipe.title || 'Untitled Recipe',
+            meta: recipe.publisher || '',
+            raw: recipe,
+            kind: 'forkify'
+          });
+        });
+      }
+
+      return out;
+    } catch (error) {
+      this.logInfo(`Forkify search unavailable: ${error.message}`);
+      return [];
+    }
+  }
+
+  async fetchSampleApisResults(query) {
+    try {
+      if (!this.sampleRecipesCache) {
+        const response = await fetch('https://api.sampleapis.com/recipes/recipes');
+        if (!response.ok) {
+          return [];
+        }
+        const payload = await response.json();
+        this.sampleRecipesCache = Array.isArray(payload) ? payload : [];
+      }
+
+      const term = String(query || '').trim().toLowerCase();
+      if (!term) {
+        return [];
+      }
+
+      return this.sampleRecipesCache
+        .filter(item => {
+          const title = String(item.title || '').toLowerCase();
+          const description = String(item.description || '').toLowerCase();
+          const cuisine = String(item.cuisine || '').toLowerCase();
+          const mainIngredient = String(item.mainIngredient || '').toLowerCase();
+          return title.includes(term) || description.includes(term) || cuisine.includes(term) || mainIngredient.includes(term);
+        })
+        .slice(0, 40)
+        .map(item => ({
+          provider: 'SampleAPIs',
+          name: item.title || 'Untitled Recipe',
+          meta: `${item.cuisine || ''}${item.course ? ` - ${item.course}` : ''}`.trim(),
+          raw: item,
+          kind: 'sampleapis'
+        }));
+    } catch (error) {
+      this.logInfo(`SampleAPIs search unavailable: ${error.message}`);
+      return [];
+    }
+  }
+
+  async importInternetResult(index) {
     const entry = this.internetResults && this.internetResults[index];
     if (!entry) {
       return;
@@ -1138,6 +1219,16 @@ class RecipeApp {
 
     if (entry.kind === 'dummyjson') {
       this.importDummyJsonResult(entry.raw);
+      return;
+    }
+
+    if (entry.kind === 'forkify') {
+      await this.importForkifyResult(entry.raw);
+      return;
+    }
+
+    if (entry.kind === 'sampleapis') {
+      this.importSampleApisResult(entry.raw);
     }
   }
 
@@ -1215,6 +1306,95 @@ class RecipeApp {
     this.recipes.push(recipe);
     this.saveToSupabase(recipe, 'insert', null);
     this.logInfo('Internet recipe saved to diary.');
+  }
+
+  async importForkifyResult(item) {
+    if (!item) {
+      return;
+    }
+
+    try {
+      const recipeId = item.recipe_id || item.recipeId;
+      if (!recipeId) {
+        throw new Error('Recipe id missing from Forkify result');
+      }
+
+      const response = await fetch(`https://forkify-api.herokuapp.com/api/get?rId=${encodeURIComponent(recipeId)}`);
+      if (!response.ok) {
+        throw new Error('Could not load Forkify recipe details');
+      }
+
+      const payload = await response.json();
+      const detail = payload.recipe || {};
+      const rawIngredients = Array.isArray(detail.ingredients) ? detail.ingredients : [];
+      const ingredients = rawIngredients
+        .map(line => this.parseIngredientLine(line))
+        .filter(Boolean)
+        .map(parsed => ({
+          id: this.uuid(),
+          name: parsed.name,
+          quantity: parsed.quantity,
+          unit: parsed.unit
+        }));
+
+      const recipe = {
+        id: this.uuid(),
+        name: detail.title || item.title || 'Imported Recipe',
+        sourceUrl: detail.source_url || item.source_url || '',
+        notes: detail.publisher ? `Source: ${detail.publisher}` : '',
+        instructions: '',
+        baseServings: 2,
+        desiredServings: 2,
+        ingredients: ingredients.length ? ingredients : [{ id: this.uuid(), name: 'unknown ingredient', quantity: 1, unit: 'pcs' }]
+      };
+
+      this.recipes.push(recipe);
+      this.saveToSupabase(recipe, 'insert', null);
+      this.logInfo('Forkify recipe saved to diary.');
+    } catch (error) {
+      this.setStatus(`Forkify import failed: ${error.message}`);
+    }
+  }
+
+  importSampleApisResult(item) {
+    if (!item) {
+      return;
+    }
+
+    const rawIngredients = Array.isArray(item.ingredients)
+      ? item.ingredients
+      : String(item.ingredients || '')
+          .split(/\r?\n/)
+          .map(line => line.trim())
+          .filter(Boolean);
+
+    const ingredients = rawIngredients
+      .map(line => this.parseIngredientLine(line))
+      .filter(Boolean)
+      .map(parsed => ({
+        id: this.uuid(),
+        name: parsed.name,
+        quantity: parsed.quantity,
+        unit: parsed.unit
+      }));
+
+    const servings = Number(item.servings);
+    const safeServings = Number.isFinite(servings) && servings > 0 ? servings : 2;
+
+    const recipe = {
+      id: this.uuid(),
+      name: item.title || 'Imported Recipe',
+      sourceUrl: item.url || item.publicUrl || '',
+      notes: item.description || '',
+      instructions: String(item.directions || ''),
+      baseServings: safeServings,
+      desiredServings: safeServings,
+      ingredients: ingredients.length ? ingredients : [{ id: this.uuid(), name: 'unknown ingredient', quantity: 1, unit: 'pcs' }]
+    };
+
+    this.recipes.push(recipe);
+    this.saveToSupabase(recipe, 'insert', null);
+    this.logInfo('SampleAPIs recipe saved to diary.');
   }
 
   parseMeasure(measureText) {
