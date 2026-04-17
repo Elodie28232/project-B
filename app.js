@@ -17,6 +17,7 @@ class RecipeApp {
     this.selectedRecipeId = null;
     this.isSavingRecipe = false;
     this.isLoading = false;
+    this.statusTimer = null;
     this.subscriptions = [];
     this.syncState = {
       peer: null,
@@ -67,6 +68,12 @@ class RecipeApp {
       this.logInfo(`Using household code: ${this.householdCode}`);
       this.setStatus('Loading recipes from cloud...');
       this.loadRecipesFromSupabase();
+
+      window.addEventListener('resize', () => {
+        if (this.selectedRecipeId) {
+          this.renderRecipeDetail();
+        }
+      });
     } else {
       this.setStatus('Supabase library failed to load. Retrying...');
       setTimeout(() => this.init(), 2000);
@@ -127,6 +134,8 @@ class RecipeApp {
 
       this.isLoading = false;
       this.render();
+      const count = this.recipes.length;
+      this.setStatus(`Cloud sync ready. Loaded ${count} recipe${count === 1 ? '' : 's'}.`, true, 2500);
       this.logInfo(`Loaded ${this.recipes.length} recipes from cloud.`);
 
       // Subscribe to real-time changes
@@ -369,22 +378,40 @@ class RecipeApp {
   renderRecipeDetail() {
     const panel = document.getElementById('recipe-detail');
     const body = document.getElementById('recipe-detail-body');
+    const backdrop = document.getElementById('recipe-detail-backdrop');
     if (!panel || !body) {
       return;
     }
 
     if (!this.selectedRecipeId) {
       panel.classList.add('hidden');
+      panel.classList.remove('mobile-popup');
+      if (backdrop) {
+        backdrop.classList.add('hidden');
+      }
+      document.body.classList.remove('no-scroll');
       return;
     }
 
     const recipe = this.recipes.find(item => item.id === this.selectedRecipeId);
     if (!recipe) {
       panel.classList.add('hidden');
+      panel.classList.remove('mobile-popup');
+      if (backdrop) {
+        backdrop.classList.add('hidden');
+      }
+      document.body.classList.remove('no-scroll');
       return;
     }
 
     panel.classList.remove('hidden');
+    const isMobile = window.matchMedia('(max-width: 860px)').matches;
+    panel.classList.toggle('mobile-popup', isMobile);
+    if (backdrop) {
+      backdrop.classList.toggle('hidden', !isMobile);
+    }
+    document.body.classList.toggle('no-scroll', isMobile);
+
     body.innerHTML = `
       <h3>${this.escapeHtml(recipe.name)}</h3>
       <p class="muted">Base servings: ${this.formatQty(recipe.baseServings)}</p>
@@ -1854,10 +1881,26 @@ class RecipeApp {
     );
   }
 
-  setStatus(message, isPositive = false) {
+  setStatus(message, isPositive = false, autoClearMs = 0) {
     const root = document.getElementById('status-message');
     root.textContent = message;
     root.classList.toggle('ok', Boolean(isPositive));
+
+    if (this.statusTimer) {
+      clearTimeout(this.statusTimer);
+      this.statusTimer = null;
+    }
+
+    if (autoClearMs > 0) {
+      const snapshot = message;
+      this.statusTimer = setTimeout(() => {
+        if (root.textContent === snapshot) {
+          root.textContent = '';
+          root.classList.remove('ok');
+        }
+        this.statusTimer = null;
+      }, autoClearMs);
+    }
   }
 
   logInfo(message) {

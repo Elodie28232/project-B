@@ -102,6 +102,10 @@
       display: none;
    }
 
+   body.no-scroll {
+      overflow: hidden;
+   }
+
    .panel {
       background: var(--panel);
       border: 1px solid var(--line);
@@ -334,6 +338,13 @@
       display: none;
    }
 
+   .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(26, 22, 18, 0.45);
+      z-index: 1090;
+   }
+
    .fade-in {
       animation: rise 0.4s ease both;
    }
@@ -382,5 +393,26 @@
       .shopping-item-qty {
          grid-column: 1 / span 2;
          padding-left: 34px;
+      }
+
+      #recipe-detail.mobile-popup {
+         position: fixed;
+         left: 50%;
+         top: 50%;
+         transform: translate(-50%, -50%);
+         width: min(92vw, 560px);
+         max-height: 82vh;
+         overflow-y: auto;
+         margin: 0;
+         z-index: 1100;
+         box-shadow: 0 22px 48px rgba(44, 24, 17, 0.28);
+      }
+
+      #recipe-detail.mobile-popup .row.between {
+         position: sticky;
+         top: 0;
+         background: var(--panel);
+         z-index: 1;
+         padding-bottom: 0.35rem;
       }
    }
