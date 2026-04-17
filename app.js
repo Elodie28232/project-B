@@ -64,6 +64,7 @@ class RecipeApp {
       this.supabase = window.supabase.createClient(this.supabaseUrl, this.supabaseKey);
       this.isLoading = true;
       this.render();
+      this.logInfo(`Using household code: ${this.householdCode}`);
       this.setStatus('Loading recipes from cloud...');
       this.loadRecipesFromSupabase();
     } else {
