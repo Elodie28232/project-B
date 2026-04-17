@@ -2,16 +2,28 @@ class RecipeApp {
   constructor() {
     this.storageKey = 'pantry-pal-recipes-v2';
     this.shoppingChecksKey = 'pantry-pal-shopping-checks-v1';
-    this.recipes = this.readRecipes();
+    this.householdCode = 'happypantry';
+    
+    // Supabase config
+    this.supabaseUrl = 'https://azjqpzpvlepepbfbqwnu.supabase.co';
+    this.supabaseKey = 'sb_publishable_ExGVdbf3VVGxa1AqEzSj_A_ztRjB10a';
+    this.supabase = null;
+    
+    // App state
+    this.recipes = [];
     this.shoppingChecks = this.readShoppingChecks();
     this.searchTerm = '';
     this.editingId = null;
     this.selectedRecipeId = null;
     this.isSavingRecipe = false;
+    this.isLoading = false;
+    this.subscriptions = [];
     this.syncState = {
       peer: null,
       channel: null,
-      isHost: false
+      isHost: false,
+      pendingBroadcast: false,
+      incomingChunks: {}
     };
 
     this.ingredientProfiles = {
@@ -47,11 +59,22 @@ class RecipeApp {
       });
     }
 
-    this.render();
-    this.logInfo('Ready. Add recipes or import from the internet.');
+    // Initialize Supabase
+    if (window.supabase) {
+      this.supabase = window.supabase.createClient(this.supabaseUrl, this.supabaseKey);
+      this.isLoading = true;
+      this.render();
+      this.setStatus('Loading recipes from cloud...');
+      this.loadRecipesFromSupabase();
+    } else {
+      this.setStatus('Supabase library failed to load. Retrying...');
+      setTimeout(() => this.init(), 2000);
+    }
   }
 
   readRecipes() {
+    // This is kept for backward compatibility but is no longer used
+    // Recipes now come from Supabase
     try {
       const raw = localStorage.getItem(this.storageKey);
       if (!raw) {
@@ -61,9 +84,186 @@ class RecipeApp {
       if (!Array.isArray(parsed)) {
         return [];
       }
-      return parsed.map(recipe => this.normalizeRecipe(recipe)).filter(Boolean);
+      return parsed;
     } catch (error) {
       return [];
+    }
+  }
+
+  async loadRecipesFromSupabase() {
+    try {
+      if (!this.supabase) {
+        this.setStatus('Supabase not initialized.');
+        this.isLoading = false;
+        return;
+      }
+
+      const { data, error } = await this.supabase
+        .from('recipes')
+        .select('*')
+        .eq('household_code', this.householdCode)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        throw error;
+      }
+
+      // Convert Supabase rows to recipe format
+      this.recipes = (data || []).map(row => ({
+        id: row.id,
+        name: row.name,
+        sourceUrl: row.source_url || '',
+        notes: row.notes || '',
+        instructions: row.instructions || '',
+        includeInShopping: row.include_in_shopping !== false,
+        baseServings: row.base_servings || 1,
+        desiredServings: row.desired_servings || 1,
+        ingredients: row.ingredients || []
+      }));
+
+      // Also try to migrate any local recipes
+      this.migrateLocalRecipesToSupabase();
+
+      this.isLoading = false;
+      this.render();
+      this.logInfo(`Loaded ${this.recipes.length} recipes from cloud.`);
+
+      // Subscribe to real-time changes
+      this.subscribeToRecipeChanges();
+    } catch (error) {
+      this.setStatus(`Cloud load failed: ${error.message}. Falling back to local.`);
+      this.isLoading = false;
+      this.logInfo('Load error: ' + error.message);
+    }
+  }
+
+  async migrateLocalRecipesToSupabase() {
+    try {
+      if (!this.supabase) return;
+      
+      const raw = localStorage.getItem(this.storageKey);
+      if (!raw) return;
+
+      const localRecipes = JSON.parse(raw);
+      if (!Array.isArray(localRecipes) || localRecipes.length === 0) return;
+
+      // Check if already migrated
+      const { data: existing } = await this.supabase
+        .from('recipes')
+        .select('id')
+        .eq('household_code', this.householdCode);
+
+      if (existing && existing.length > 0) {
+        // Already migrated
+        return;
+      }
+
+      // Migrate recipes
+      const toInsert = localRecipes.map(recipe => ({
+        id: recipe.id,
+        household_code: this.householdCode,
+        name: recipe.name,
+        source_url: recipe.sourceUrl || '',
+        notes: recipe.notes || '',
+        instructions: recipe.instructions || '',
+        include_in_shopping: recipe.includeInShopping !== false,
+        base_servings: recipe.baseServings || 1,
+        desired_servings: recipe.desiredServings || 1,
+        ingredients: recipe.ingredients || []
+      }));
+
+      const { error } = await this.supabase
+        .from('recipes')
+        .insert(toInsert);
+
+      if (error) {
+        this.logInfo(`Migration warning: ${error.message}`);
+      } else {
+        this.logInfo(`Migrated ${toInsert.length} recipes to cloud.`);
+        localStorage.removeItem(this.storageKey);
+      }
+    } catch (error) {
+      this.logInfo(`Migration error: ${error.message}`);
+    }
+  }
+
+  subscribeToRecipeChanges() {
+    try {
+      if (!this.supabase) return;
+
+      // Remove old subscriptions
+      this.subscriptions.forEach(sub => sub.unsubscribe());
+      this.subscriptions = [];
+
+      const subscription = this.supabase
+        .channel(`recipes-${this.householdCode}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'recipes',
+            filter: `household_code=eq.${this.householdCode}`
+          },
+          (payload) => {
+            this.handleSupabaseChange(payload);
+          }
+        )
+        .subscribe();
+
+      this.subscriptions.push(subscription);
+    } catch (error) {
+      this.logInfo(`Subscription error: ${error.message}`);
+    }
+  }
+
+  handleSupabaseChange(payload) {
+    try {
+      if (payload.eventType === 'INSERT') {
+        const newRecipe = {
+          id: payload.new.id,
+          name: payload.new.name,
+          sourceUrl: payload.new.source_url || '',
+          notes: payload.new.notes || '',
+          instructions: payload.new.instructions || '',
+          includeInShopping: payload.new.include_in_shopping !== false,
+          baseServings: payload.new.base_servings || 1,
+          desiredServings: payload.new.desired_servings || 1,
+          ingredients: payload.new.ingredients || []
+        };
+
+        if (!this.recipes.find(r => r.id === newRecipe.id)) {
+          this.recipes.push(newRecipe);
+          this.logInfo('New recipe received from other device.');
+          this.render();
+        }
+      } else if (payload.eventType === 'UPDATE') {
+        const index = this.recipes.findIndex(r => r.id === payload.new.id);
+        if (index >= 0) {
+          this.recipes[index] = {
+            id: payload.new.id,
+            name: payload.new.name,
+            sourceUrl: payload.new.source_url || '',
+            notes: payload.new.notes || '',
+            instructions: payload.new.instructions || '',
+            includeInShopping: payload.new.include_in_shopping !== false,
+            baseServings: payload.new.base_servings || 1,
+            desiredServings: payload.new.desired_servings || 1,
+            ingredients: payload.new.ingredients || []
+          };
+          this.logInfo('Recipe updated from other device.');
+          this.render();
+        }
+      } else if (payload.eventType === 'DELETE') {
+        const index = this.recipes.findIndex(r => r.id === payload.old.id);
+        if (index >= 0) {
+          this.recipes.splice(index, 1);
+          this.logInfo('Recipe deleted from other device.');
+          this.render();
+        }
+      }
+    } catch (error) {
+      this.logInfo(`Change handling error: ${error.message}`);
     }
   }
 
@@ -557,26 +757,83 @@ class RecipeApp {
       ingredients
     };
 
-    if (existing) {
-      const idx = this.recipes.findIndex(recipe => recipe.id === existing.id);
-      this.recipes[idx] = recipeData;
-      this.logInfo('Recipe updated.');
-    } else {
-      this.recipes.push(recipeData);
-      this.logInfo('Recipe created.');
-    }
+    this.saveToSupabase(recipeData, existing ? 'update' : 'insert', saveButton);
+  }
 
-    this.selectedRecipeId = recipeData.id;
-    this.editingId = null;
-    this.resetForm();
-    document.getElementById('form-title').textContent = 'Add Recipe';
-    this.saveData(true);
-    this.switchView('diary', document.querySelector('[data-view="diary"]'));
+  async saveToSupabase(recipeData, action, saveButton) {
+    try {
+      if (!this.supabase) {
+        throw new Error('Supabase not connected');
+      }
 
-    this.isSavingRecipe = false;
-    if (saveButton) {
-      saveButton.disabled = false;
-      saveButton.textContent = 'Save Recipe';
+      const payload = {
+        id: recipeData.id,
+        household_code: this.householdCode,
+        name: recipeData.name,
+        source_url: recipeData.sourceUrl,
+        notes: recipeData.notes,
+        instructions: recipeData.instructions,
+        include_in_shopping: recipeData.includeInShopping,
+        base_servings: recipeData.baseServings,
+        desired_servings: recipeData.desiredServings,
+        ingredients: recipeData.ingredients
+      };
+
+      let error = null;
+
+      if (action === 'insert') {
+        const { error: err } = await this.supabase
+          .from('recipes')
+          .insert([payload]);
+        error = err;
+      } else if (action === 'update') {
+        const { error: err } = await this.supabase
+          .from('recipes')
+          .update(payload)
+          .eq('id', recipeData.id);
+        error = err;
+      } else if (action === 'delete') {
+        const { error: err } = await this.supabase
+          .from('recipes')
+          .delete()
+          .eq('id', recipeData.id);
+        error = err;
+      }
+
+      if (error) {
+        throw error;
+      }
+
+      // Update local state
+      const existing = this.recipes.find(r => r.id === recipeData.id);
+      if (existing) {
+        Object.assign(existing, recipeData);
+        this.logInfo('Recipe updated.');
+      } else {
+        this.recipes.push(recipeData);
+        this.logInfo('Recipe created.');
+      }
+
+      this.selectedRecipeId = recipeData.id;
+      this.editingId = null;
+      this.resetForm();
+      document.getElementById('form-title').textContent = 'Add Recipe';
+      this.render();
+      this.renderIngredientDatalist();
+      this.switchView('diary', document.querySelector('[data-view="diary"]'));
+
+      this.isSavingRecipe = false;
+      if (saveButton) {
+        saveButton.disabled = false;
+        saveButton.textContent = 'Save Recipe';
+      }
+    } catch (error) {
+      this.setStatus(`Save failed: ${error.message}`);
+      this.isSavingRecipe = false;
+      if (saveButton) {
+        saveButton.disabled = false;
+        saveButton.textContent = 'Save Recipe';
+      }
     }
   }
 
@@ -589,8 +846,7 @@ class RecipeApp {
       this.selectedRecipeId = null;
     }
     this.recipes.splice(index, 1);
-    this.saveData(true);
-    this.logInfo('Recipe deleted.');
+    this.saveToSupabase(recipe, 'delete', null);
   }
 
   updateServings(index, value) {
@@ -600,7 +856,28 @@ class RecipeApp {
     }
     const servings = Number(value);
     recipe.desiredServings = Number.isFinite(servings) && servings >= 0 ? servings : 0;
-    this.saveData(false);
+    this.saveServing(recipe);
+  }
+
+  async saveServing(recipe) {
+    try {
+      if (!this.supabase) {
+        throw new Error('Supabase not connected');
+      }
+
+      const { error } = await this.supabase
+        .from('recipes')
+        .update({ desired_servings: recipe.desiredServings })
+        .eq('id', recipe.id);
+
+      if (error) {
+        throw error;
+      }
+
+      this.render();
+    } catch (error) {
+      this.logInfo(`Failed to save servings: ${error.message}`);
+    }
   }
 
   async searchInternetRecipes() {
@@ -752,7 +1029,7 @@ class RecipeApp {
     };
 
     this.recipes.push(recipe);
-    this.saveData(true);
+    this.saveToSupabase(recipe, 'insert', null);
     this.logInfo('Internet recipe saved to diary.');
   }
 
@@ -791,7 +1068,7 @@ class RecipeApp {
     };
 
     this.recipes.push(recipe);
-    this.saveData(true);
+    this.saveToSupabase(recipe, 'insert', null);
     this.logInfo('Internet recipe saved to diary.');
   }
 
@@ -981,7 +1258,7 @@ class RecipeApp {
     }
 
     const summary = this.mergeRecipes(normalized);
-    this.saveData(true);
+      this.mergeRecipesToSupabase(normalized);
     this.setStatus(this.getImportSummaryMessage(summary, normalized.length), true);
   }
 
@@ -1235,6 +1512,40 @@ class RecipeApp {
     return [parsed];
   }
 
+  async mergeRecipesToSupabase(recipes) {
+    try {
+      if (!this.supabase) {
+        throw new Error('Supabase not connected');
+      }
+
+      for (const recipe of recipes) {
+        const payload = {
+          id: recipe.id,
+          household_code: this.householdCode,
+          name: recipe.name,
+          source_url: recipe.sourceUrl || '',
+          notes: recipe.notes || '',
+          instructions: recipe.instructions || '',
+          include_in_shopping: recipe.includeInShopping !== false,
+          base_servings: recipe.baseServings || 1,
+          desired_servings: recipe.desiredServings || 1,
+          ingredients: recipe.ingredients || []
+        };
+
+        // Upsert (insert or update)
+        const { error } = await this.supabase
+          .from('recipes')
+          .upsert([payload], { onConflict: 'id' });
+
+        if (error) {
+          this.logInfo(`Error importing recipe "${recipe.name}": ${error.message}`);
+        }
+      }
+    } catch (error) {
+      this.logInfo(`Batch import error: ${error.message}`);
+    }
+  }
+
   mergeRecipes(incomingRecipes) {
     const summary = { added: 0, updated: 0 };
     incomingRecipes.forEach(candidate => {
@@ -1373,6 +1684,9 @@ class RecipeApp {
       const state = peer.connectionState;
       if (state === 'connected') {
         this.setStatus('Devices connected. Live sync is active.', true);
+        if (this.syncState.pendingBroadcast) {
+          this.broadcastState();
+        }
       } else if (state === 'failed' || state === 'disconnected' || state === 'closed') {
         this.setStatus('Sync connection ended.');
       }
@@ -1386,16 +1700,54 @@ class RecipeApp {
 
     channel.onopen = () => {
       this.setStatus('Data channel open. Recipes now mirror across devices.', true);
+      this.syncState.pendingBroadcast = false;
       this.broadcastState();
+    };
+
+    channel.onclose = () => {
+      this.setStatus('Sync channel closed. Reconnect from Sync Devices tab.');
+    };
+
+    channel.onerror = () => {
+      this.setStatus('Sync channel error. Reconnect from Sync Devices tab.');
     };
 
     channel.onmessage = event => {
       try {
         const message = JSON.parse(event.data);
         if (message.type === 'full-sync' && Array.isArray(message.payload)) {
-          this.recipes = message.payload.map(item => this.normalizeRecipe(item)).filter(Boolean);
-          this.saveData(false);
-          this.setStatus('Received updates from the other device.', true);
+          this.applyIncomingRecipes(message.payload);
+          return;
+        }
+
+        if (message.type === 'full-sync-start' && message.id && Number.isInteger(message.total)) {
+          this.syncState.incomingChunks[message.id] = {
+            total: message.total,
+            chunks: new Array(message.total),
+            received: 0
+          };
+          return;
+        }
+
+        if (message.type === 'full-sync-chunk' && message.id && Number.isInteger(message.index) && typeof message.data === 'string') {
+          const state = this.syncState.incomingChunks[message.id];
+          if (!state || message.index < 0 || message.index >= state.total) {
+            return;
+          }
+
+          if (!state.chunks[message.index]) {
+            state.chunks[message.index] = message.data;
+            state.received += 1;
+          }
+
+          if (state.received === state.total) {
+            const joined = state.chunks.join('');
+            delete this.syncState.incomingChunks[message.id];
+            const payload = JSON.parse(joined);
+            if (Array.isArray(payload)) {
+              this.applyIncomingRecipes(payload);
+            }
+          }
         }
       } catch (error) {
         this.setStatus('Received invalid sync payload.');
@@ -1403,18 +1755,47 @@ class RecipeApp {
     };
   }
 
+  applyIncomingRecipes(payload) {
+    this.recipes = payload.map(item => this.normalizeRecipe(item)).filter(Boolean);
+    this.saveData(false);
+    this.logInfo('Received updates from the other device.');
+  }
+
   broadcastState() {
     const channel = this.syncState.channel;
     if (!channel || channel.readyState !== 'open') {
+      this.syncState.pendingBroadcast = true;
       return;
     }
 
-    channel.send(
-      JSON.stringify({
-        type: 'full-sync',
-        payload: this.recipes
-      })
-    );
+    try {
+      const payload = JSON.stringify(this.recipes);
+      const maxChunkSize = 12000;
+
+      if (payload.length <= maxChunkSize) {
+        channel.send(
+          JSON.stringify({
+            type: 'full-sync',
+            payload: this.recipes
+          })
+        );
+        return;
+      }
+
+      const syncId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const chunks = [];
+      for (let i = 0; i < payload.length; i += maxChunkSize) {
+        chunks.push(payload.slice(i, i + maxChunkSize));
+      }
+
+      channel.send(JSON.stringify({ type: 'full-sync-start', id: syncId, total: chunks.length }));
+      chunks.forEach((data, index) => {
+        channel.send(JSON.stringify({ type: 'full-sync-chunk', id: syncId, index, data }));
+      });
+    } catch (error) {
+      this.syncState.pendingBroadcast = true;
+      this.setStatus('Sync send failed. Changes will resend when channel is available.');
+    }
   }
 
   destroyPeer() {
@@ -1427,6 +1808,8 @@ class RecipeApp {
     this.syncState.peer = null;
     this.syncState.channel = null;
     this.syncState.isHost = false;
+    this.syncState.pendingBroadcast = false;
+    this.syncState.incomingChunks = {};
   }
 
   waitIceGathering(peer) {
@@ -1481,13 +1864,11 @@ class RecipeApp {
   }
 
   saveData(shouldBroadcast) {
-    localStorage.setItem(this.storageKey, JSON.stringify(this.recipes));
+    // saveData now only handles shopping checks (local storage)
+    // Recipes are saved via Supabase
     this.saveShoppingChecks();
     this.render();
     this.renderIngredientDatalist();
-    if (shouldBroadcast) {
-      this.broadcastState();
-    }
   }
 
   readShoppingChecks() {
