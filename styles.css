@@ -341,7 +341,7 @@
    .modal-backdrop {
       position: fixed;
       inset: 0;
-      background: rgba(26, 22, 18, 0.6);
+      background: transparent;
       z-index: 2500;
    }
 

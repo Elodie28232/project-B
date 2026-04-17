@@ -135,7 +135,7 @@ class RecipeApp {
       this.isLoading = false;
       this.render();
       const count = this.recipes.length;
-      this.setStatus(`Cloud sync ready. Loaded ${count} recipe${count === 1 ? '' : 's'}.`, true, 2500);
+     // this.setStatus(`Cloud sync ready. Loaded ${count} recipe${count === 1 ? '' : 's'}.`, true, 2500);
       this.logInfo(`Loaded ${this.recipes.length} recipes from cloud.`);
 
       // Subscribe to real-time changes
