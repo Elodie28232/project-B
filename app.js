@@ -66,7 +66,7 @@ class RecipeApp {
       this.isLoading = true;
       this.render();
       this.logInfo(`Using household code: ${this.householdCode}`);
-      this.setStatus('Loading recipes from cloud...');
+      // this.setStatus('Loading recipes from cloud...');
       this.loadRecipesFromSupabase();
 
       window.addEventListener('resize', () => {

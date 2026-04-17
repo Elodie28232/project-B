@@ -397,17 +397,20 @@
 
       #recipe-detail.mobile-popup {
          position: fixed;
-         left: 50%;
-         top: 50%;
-         transform: translate(-50%, -50%);
-         width: min(92vw, 560px);
-         max-height: calc(100vh - 1.5rem);
+         left: max(0.5rem, env(safe-area-inset-left));
+         right: max(0.5rem, env(safe-area-inset-right));
+         top: max(0.5rem, env(safe-area-inset-top));
+         bottom: max(0.5rem, env(safe-area-inset-bottom));
+         width: auto;
+         max-height: calc(100dvh - 1rem);
          overflow-y: auto;
          -webkit-overflow-scrolling: touch;
          overscroll-behavior: contain;
          touch-action: pan-y;
          background: #ffffff;
          margin: 0;
+         padding-bottom: 0.75rem;
+         transform: none;
          z-index: 2600;
          box-shadow: 0 22px 48px rgba(44, 24, 17, 0.28);
       }
