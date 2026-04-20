@@ -1,10 +1,10 @@
    :root {
-      --bg: #fffaf3;
+      --bg: #f7efe4;
       --ink: #2d2a26;
-      --panel: #ffffff;
-      --accent: #ff7a59;
-      --accent-soft: #ffd3c6;
-      --line: #f0dccc;
+      --panel: #fcf6ef;
+      --accent: #7a4dd8;
+      --accent-soft: #e1d4fb;
+      --line: #e4d8c7;
       --muted: #7b746b;
       --ok: #1f8b5d;
    }
@@ -18,9 +18,9 @@
       font-family: 'Nunito', sans-serif;
       color: var(--ink);
       background:
-         radial-gradient(circle at 10% 10%, #ffe8da 0, transparent 30%),
-         radial-gradient(circle at 85% 15%, #ffefe0 0, transparent 28%),
-         linear-gradient(180deg, #fff8ef, #fff6ed 40%, #fffaf3);
+         radial-gradient(circle at 10% 10%, rgba(122, 77, 216, 0.12) 0, transparent 30%),
+         radial-gradient(circle at 85% 15%, rgba(167, 142, 224, 0.16) 0, transparent 28%),
+         linear-gradient(180deg, #f8f1e6, #f6efe3 40%, #f7efe4);
       min-height: 100vh;
       padding: 1rem;
    }
@@ -28,18 +28,18 @@
    .app-shell {
       max-width: 1080px;
       margin: 0 auto;
-      background: rgba(255, 255, 255, 0.68);
-      border: 1px solid #ffe2d7;
+      background: rgba(252, 246, 239, 0.82);
+      border: 1px solid #e8dcc9;
       border-radius: 20px;
       backdrop-filter: blur(5px);
-      box-shadow: 0 18px 40px rgba(186, 100, 72, 0.14);
+      box-shadow: 0 18px 40px rgba(94, 64, 156, 0.14);
       overflow: hidden;
    }
 
    header {
       padding: 1.2rem 1rem 0.8rem;
-      border-bottom: 1px solid #ffe4d8;
-      background: linear-gradient(135deg, #fff6ee, #fffdf8);
+      border-bottom: 1px solid #e9dcc9;
+      background: linear-gradient(135deg, #f8f1e6, #fcf7f0);
    }
 
    h1,
@@ -52,7 +52,7 @@
 
    h1 {
       font-size: clamp(1.4rem, 4vw, 2rem);
-      color: #923f2b;
+      color: #6440b8;
    }
 
    .subtitle {
@@ -69,9 +69,9 @@
    }
 
    .tab {
-      border: 1px solid #ffccb9;
-      background: #fff;
-      color: #8e452e;
+      border: 1px solid #d8c8f1;
+      background: var(--panel);
+      color: #5e3db0;
       padding: 0.55rem 0.9rem;
       border-radius: 999px;
       font-weight: 700;
@@ -81,7 +81,7 @@
 
    .tab:hover {
       transform: translateY(-1px);
-      background: #fff8f4;
+      background: #f3edf9;
    }
 
    .tab.active {
@@ -190,8 +190,8 @@
    textarea {
       width: 100%;
       padding: 0.58rem 0.65rem;
-      border: 1px solid #e8d2c6;
-      background: #fff;
+      border: 1px solid #dcd0bf;
+      background: #fffaf4;
       color: var(--ink);
    }
 
@@ -204,14 +204,14 @@
       border: none;
       padding: 0.55rem 0.8rem;
       cursor: pointer;
-      background: #f7ede7;
-      color: #6f4234;
+      background: #ede3fb;
+      color: #5333a7;
       font-weight: 700;
    }
 
    .btn.primary {
       background: var(--accent);
-      color: white;
+      color: #fffaf4;
    }
 
    .btn.success {
@@ -220,11 +220,11 @@
    }
 
    .recipe-card {
-      border: 1px solid #f0ded4;
+      border: 1px solid #e6d9c8;
       border-radius: 12px;
       padding: 0.8rem;
       margin-top: 0.7rem;
-      background: #fffdfb;
+      background: #fcf8f2;
    }
 
    .recipe-card.clickable {
@@ -234,7 +234,7 @@
 
    .recipe-card.clickable:hover {
       transform: translateY(-1px);
-      box-shadow: 0 8px 16px rgba(154, 84, 60, 0.1);
+      box-shadow: 0 8px 16px rgba(94, 64, 156, 0.12);
    }
 
    .recipe-title {
@@ -263,7 +263,7 @@
       grid-template-columns: 28px minmax(0, 1fr) auto;
       align-items: center;
       gap: 0.6rem;
-      border-bottom: 1px dashed #f0ddd3;
+      border-bottom: 1px dashed #ded0bf;
       padding: 0.55rem 0;
       font-size: 0.95rem;
       cursor: pointer;
@@ -295,9 +295,9 @@
    }
 
    .shopping-selector {
-      border: 1px solid #f0ded4;
+      border: 1px solid #e6d9c8;
       border-radius: 12px;
-      background: #fffdfb;
+      background: #fcf8f2;
       overflow: hidden;
    }
 
@@ -310,9 +310,9 @@
       list-style: none;
       padding: 0.75rem 0.85rem;
       font-weight: 700;
-      color: #8e452e;
-      background: #fff7f2;
-      border-bottom: 1px solid #f4e2d8;
+      color: #5e3db0;
+      background: #f4edf9;
+      border-bottom: 1px solid #e5d8f1;
    }
 
    .shopping-selector-toggle::-webkit-details-marker {
@@ -320,7 +320,7 @@
    }
 
    .shopping-selector[open] .shopping-selector-toggle {
-      background: #fff3ec;
+      background: #ede3fb;
    }
 
    .shopping-selector-body {
@@ -334,9 +334,9 @@
       gap: 0.5rem;
       margin-top: 0.45rem;
       padding: 0.55rem;
-      border: 1px solid #f2dfd3;
+      border: 1px solid #e6d9c8;
       border-radius: 10px;
-      background: #fff;
+      background: #fffaf4;
    }
 
    .shopping-add-name {
@@ -360,7 +360,7 @@
 
    .status {
       min-height: 1.4rem;
-      color: #8a533e;
+      color: #6a4db2;
       font-size: 0.9rem;
       font-weight: 700;
    }
@@ -371,23 +371,23 @@
 
    .tiny {
       font-size: 0.82rem;
-      color: #8a7468;
+      color: #7d7368;
       margin-top: 0.3rem;
    }
 
    .import-result {
       margin-top: 0.5rem;
-      border: 1px solid #f2dfd3;
+      border: 1px solid #e6d9c8;
       border-radius: 10px;
       padding: 0.6rem;
-      background: #fffdfb;
+      background: #fcf8f2;
    }
 
    .qr {
       width: 180px;
       height: 180px;
-      background: #fff;
-      border: 1px solid #efdfd6;
+      background: #fffaf4;
+      border: 1px solid #e6d9c8;
       border-radius: 12px;
       object-fit: cover;
       display: none;
@@ -408,12 +408,12 @@
       top: max(0.35rem, env(safe-area-inset-top));
       bottom: max(0.35rem, env(safe-area-inset-bottom));
       margin: 0;
-      background: #fff;
+      background: #fcf8f2;
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
       overscroll-behavior: contain;
       touch-action: pan-y;
-      box-shadow: 0 18px 40px rgba(44, 24, 17, 0.22);
+      box-shadow: 0 18px 40px rgba(94, 64, 156, 0.18);
    }
 
    .fade-in {

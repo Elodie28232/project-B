@@ -276,32 +276,95 @@ class RecipeApp {
     if (!recipe || typeof recipe !== 'object') {
       return null;
     }
-    const safeIngredients = Array.isArray(recipe.ingredients) ? recipe.ingredients : [];
-    const baseServings = Number(recipe.baseServings);
+    const safeIngredients = this.normalizeIngredientList(
+      recipe.ingredients || recipe.recipeIngredient || recipe.ingredient || []
+    );
+    const baseServings = this.parseServings(
+      recipe.baseServings || recipe.servings || recipe.yield || recipe.recipeYield
+    );
     const desiredServings = Number(recipe.desiredServings || baseServings);
+    const name = String(recipe.name || recipe.title || recipe.label || '').trim();
+    const sourceUrl = String(recipe.sourceUrl || recipe.source_url || recipe.url || recipe.canonicalUrl || '').trim();
+    const notes = String(recipe.notes || recipe.description || '').trim();
+    const instructions = this.extractInstructions(
+      recipe.instructions || recipe.directions || recipe.method || recipe.steps || recipe.instruction
+    );
     const normalized = {
       id: this.isValidUuid(recipe.id) ? recipe.id : this.uuid(),
-      name: String(recipe.name || '').trim(),
-      sourceUrl: String(recipe.sourceUrl || '').trim(),
-      notes: String(recipe.notes || '').trim(),
-      instructions: String(recipe.instructions || '').trim(),
+      name,
+      sourceUrl,
+      notes,
+      instructions,
       includeInShopping: recipe.includeInShopping !== false,
       baseServings: Number.isFinite(baseServings) && baseServings > 0 ? baseServings : 1,
       desiredServings: Number.isFinite(desiredServings) && desiredServings >= 0 ? desiredServings : 1,
       ingredients: safeIngredients
-        .map(ing => ({
-          id: ing.id || this.uuid(),
-          name: String(ing.name || '').trim().toLowerCase(),
-          quantity: Number(ing.quantity),
-          unit: String(ing.unit || '').trim().toLowerCase() || 'pcs'
-        }))
-        .filter(ing => ing.name && Number.isFinite(ing.quantity) && ing.quantity > 0)
     };
 
     if (!normalized.name) {
       return null;
     }
     return normalized;
+  }
+
+  normalizeIngredientList(rawIngredients) {
+    if (!Array.isArray(rawIngredients)) {
+      return [];
+    }
+
+    return rawIngredients
+      .map(item => this.normalizeIngredientEntry(item))
+      .filter(Boolean);
+  }
+
+  normalizeIngredientEntry(item) {
+    if (!item) {
+      return null;
+    }
+
+    if (typeof item === 'string') {
+      const parsed = this.parseIngredientLine(item);
+      if (!parsed) {
+        return null;
+      }
+      return {
+        id: this.uuid(),
+        name: parsed.name,
+        quantity: parsed.quantity,
+        unit: parsed.unit
+      };
+    }
+
+    if (typeof item !== 'object') {
+      return null;
+    }
+
+    const rawName = String(item.name || item.item || item.ingredient || item.food || '').trim();
+    const rawQuantity = item.quantity ?? item.amount ?? item.value ?? item.count ?? '';
+    const rawUnit = String(item.unit || item.units || '').trim();
+
+    const combinedLine = [rawQuantity, rawUnit, rawName].filter(Boolean).join(' ').trim();
+    const parsed = combinedLine ? this.parseIngredientLine(combinedLine) : null;
+
+    if (parsed) {
+      return {
+        id: this.uuid(),
+        name: parsed.name,
+        quantity: parsed.quantity,
+        unit: parsed.unit
+      };
+    }
+
+    if (!rawName) {
+      return null;
+    }
+
+    return {
+      id: this.uuid(),
+      name: rawName.toLowerCase(),
+      quantity: 1,
+      unit: rawUnit.toLowerCase() || 'pcs'
+    };
   }
 
   switchView(viewId, triggerButton) {
