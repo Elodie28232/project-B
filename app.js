@@ -214,7 +214,15 @@ class RecipeApp {
             this.handleSupabaseChange(payload);
           }
         )
-        .subscribe();
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            this.logInfo('Realtime sync connected.');
+          }
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+            this.logInfo(`Realtime sync status: ${status}. Reloading recipes.`);
+            this.loadRecipesFromSupabase();
+          }
+        });
 
       this.subscriptions.push(subscription);
     } catch (error) {
@@ -244,25 +252,32 @@ class RecipeApp {
         }
       } else if (payload.eventType === 'UPDATE') {
         const index = this.recipes.findIndex(r => r.id === payload.new.id);
+        const updatedRecipe = {
+          id: payload.new.id,
+          name: payload.new.name,
+          sourceUrl: payload.new.source_url || '',
+          notes: payload.new.notes || '',
+          instructions: payload.new.instructions || '',
+          includeInShopping: payload.new.include_in_shopping !== false,
+          baseServings: payload.new.base_servings || 1,
+          desiredServings: payload.new.desired_servings || 1,
+          ingredients: payload.new.ingredients || []
+        };
         if (index >= 0) {
-          this.recipes[index] = {
-            id: payload.new.id,
-            name: payload.new.name,
-            sourceUrl: payload.new.source_url || '',
-            notes: payload.new.notes || '',
-            instructions: payload.new.instructions || '',
-            includeInShopping: payload.new.include_in_shopping !== false,
-            baseServings: payload.new.base_servings || 1,
-            desiredServings: payload.new.desired_servings || 1,
-            ingredients: payload.new.ingredients || []
-          };
+          this.recipes[index] = updatedRecipe;
           this.logInfo('Recipe updated from other device.');
-          this.render();
+        } else {
+          this.recipes.push(updatedRecipe);
+          this.logInfo('Recipe update received; added missing local recipe.');
         }
+        this.render();
       } else if (payload.eventType === 'DELETE') {
         const index = this.recipes.findIndex(r => r.id === payload.old.id);
         if (index >= 0) {
           this.recipes.splice(index, 1);
+          if (this.selectedRecipeId === payload.old.id) {
+            this.selectedRecipeId = null;
+          }
           this.logInfo('Recipe deleted from other device.');
           this.render();
         }
@@ -343,13 +358,23 @@ class RecipeApp {
     const rawQuantity = item.quantity ?? item.amount ?? item.value ?? item.count ?? '';
     const rawUnit = String(item.unit || item.units || '').trim();
 
+    const parsedStructured = this.parseStructuredQuantity(rawQuantity, rawUnit);
+    if (rawName && parsedStructured) {
+      return {
+        id: this.uuid(),
+        name: rawName.toLowerCase(),
+        quantity: parsedStructured.quantity,
+        unit: parsedStructured.unit
+      };
+    }
+
     const combinedLine = [rawQuantity, rawUnit, rawName].filter(Boolean).join(' ').trim();
     const parsed = combinedLine ? this.parseIngredientLine(combinedLine) : null;
 
     if (parsed) {
       return {
         id: this.uuid(),
-        name: parsed.name,
+        name: (rawName || parsed.name).toLowerCase(),
         quantity: parsed.quantity,
         unit: parsed.unit
       };
@@ -364,6 +389,62 @@ class RecipeApp {
       name: rawName.toLowerCase(),
       quantity: 1,
       unit: rawUnit.toLowerCase() || 'pcs'
+    };
+  }
+
+  parseStructuredQuantity(rawQuantity, rawUnit) {
+    const unitAliases = {
+      tablespoon: 'tbsp',
+      tablespoons: 'tbsp',
+      tbsp: 'tbsp',
+      teaspoon: 'tsp',
+      teaspoons: 'tsp',
+      tsp: 'tsp',
+      cup: 'cups',
+      cups: 'cups',
+      ml: 'ml',
+      cl: 'cl',
+      l: 'l',
+      g: 'g',
+      kg: 'kg',
+      oz: 'oz',
+      ounce: 'oz',
+      ounces: 'oz',
+      lb: 'lb',
+      pound: 'lb',
+      pounds: 'lb'
+    };
+
+    const normalizedRawUnit = String(rawUnit || '').trim().toLowerCase();
+    const normalizedUnit = unitAliases[normalizedRawUnit] || normalizedRawUnit || 'pcs';
+
+    if (typeof rawQuantity === 'number' && Number.isFinite(rawQuantity) && rawQuantity > 0) {
+      return {
+        quantity: rawQuantity,
+        unit: normalizedUnit
+      };
+    }
+
+    const quantityText = this.replaceFractionChars(String(rawQuantity || '').trim().toLowerCase());
+    if (!quantityText) {
+      return null;
+    }
+
+    const match = quantityText.match(/^((\d+\s+\d+\/\d+)|(\d+\/\d+)|(\d*\.?\d+))\s*([a-z]+)?$/i);
+    if (!match) {
+      return null;
+    }
+
+    const quantity = this.parseFractionNumber(match[1]);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      return null;
+    }
+
+    const inlineUnitToken = String(match[5] || '').trim().toLowerCase();
+    const inlineUnit = unitAliases[inlineUnitToken] || '';
+    return {
+      quantity,
+      unit: inlineUnit || normalizedUnit || 'pcs'
     };
   }
 
@@ -1011,22 +1092,33 @@ class RecipeApp {
       }
 
       // Update local state
-      const existing = this.recipes.find(r => r.id === recipeData.id);
-      if (existing) {
-        Object.assign(existing, recipeData);
-        this.logInfo('Recipe updated.');
+      const existingIndex = this.recipes.findIndex(r => r.id === recipeData.id);
+      if (action === 'delete') {
+        if (existingIndex >= 0) {
+          this.recipes.splice(existingIndex, 1);
+        }
+        if (this.selectedRecipeId === recipeData.id) {
+          this.selectedRecipeId = null;
+        }
+        this.logInfo('Recipe deleted.');
       } else {
-        this.recipes.push(recipeData);
-        this.logInfo('Recipe created.');
+        if (existingIndex >= 0) {
+          Object.assign(this.recipes[existingIndex], recipeData);
+          this.logInfo('Recipe updated.');
+        } else {
+          this.recipes.push(recipeData);
+          this.logInfo('Recipe created.');
+        }
+
+        this.selectedRecipeId = recipeData.id;
+        this.editingId = null;
+        this.resetForm();
+        document.getElementById('form-title').textContent = 'Add Recipe';
+        this.switchView('diary', document.querySelector('[data-view="diary"]'));
       }
 
-      this.selectedRecipeId = recipeData.id;
-      this.editingId = null;
-      this.resetForm();
-      document.getElementById('form-title').textContent = 'Add Recipe';
       this.render();
       this.renderIngredientDatalist();
-      this.switchView('diary', document.querySelector('[data-view="diary"]'));
 
       this.isSavingRecipe = false;
       if (saveButton) {
@@ -1048,10 +1140,6 @@ class RecipeApp {
     if (!recipe) {
       return;
     }
-    if (this.selectedRecipeId === recipe.id) {
-      this.selectedRecipeId = null;
-    }
-    this.recipes.splice(index, 1);
     this.saveToSupabase(recipe, 'delete', null);
   }
 
