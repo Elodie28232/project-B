@@ -554,11 +554,11 @@ class RecipeApp {
       </div>
       ${recipe.sourceUrl ? `<p><a href="${this.escapeHtml(recipe.sourceUrl)}" target="_blank" rel="noopener noreferrer">Open source</a></p>` : ''}
       ${recipe.notes ? `<p><strong>Notes</strong><br>${this.escapeHtml(recipe.notes).replace(/\n/g, '<br>')}</p>` : '<p class="muted">No notes added.</p>'}
-      ${recipe.instructions ? `<p><strong>Instructions</strong><br>${this.escapeHtml(recipe.instructions).replace(/\n/g, '<br>')}</p>` : '<p class="muted">No instructions added.</p>'}
       <p><strong>Ingredients</strong></p>
       <ul>
         ${recipe.ingredients.map(ing => `<li>${this.formatQty(Number(ing.quantity) * detailRatio)} ${this.escapeHtml(ing.unit)} ${this.escapeHtml(ing.name)}</li>`).join('')}
       </ul>
+      ${recipe.instructions ? `<p><strong>Instructions</strong><br>${this.escapeHtml(recipe.instructions).replace(/\n/g, '<br>')}</p>` : '<p class="muted">No instructions added.</p>'}
     `;
 
     const isMobile = window.matchMedia('(max-width: 1024px) and (pointer: coarse), (max-width: 860px)').matches;
@@ -1573,7 +1573,7 @@ class RecipeApp {
     return { quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1, unit };
   }
 
-  importPastedJson() {
+  async importPastedJson() {
     const input = document.getElementById('paste-json').value.trim();
     if (!input) {
       this.setStatus('Paste JSON first.');
@@ -1581,7 +1581,7 @@ class RecipeApp {
     }
     try {
       const parsed = this.parseJsonText(input);
-      this.importFromParsedPayload(parsed, 'No valid recipes found in pasted JSON.');
+      await this.importFromParsedPayload(parsed, 'No valid recipes found in pasted JSON.');
     } catch (error) {
       this.setStatus(`Invalid JSON format: ${error.message}`);
     }
@@ -1599,7 +1599,7 @@ class RecipeApp {
     try {
       const text = await file.text();
       const parsed = this.parseJsonText(text);
-      this.importFromParsedPayload(
+      await this.importFromParsedPayload(
         parsed,
         'No valid recipes found in imported file. Expected an array, a recipe object, or an object containing recipes/data/items.'
       );
@@ -1725,7 +1725,7 @@ class RecipeApp {
     return '';
   }
 
-  importFromParsedPayload(parsed, emptyMessage) {
+  async importFromParsedPayload(parsed, emptyMessage) {
     const list = this.extractRecipeCandidates(parsed);
     const normalized = list.map(item => this.normalizeRecipeCandidate(item)).filter(Boolean);
     if (normalized.length === 0) {
@@ -1733,8 +1733,18 @@ class RecipeApp {
       return;
     }
 
+    const primaryCandidate = normalized[0];
     const summary = this.mergeRecipes(normalized);
-      this.mergeRecipesToSupabase(normalized);
+    await this.mergeRecipesToSupabase(normalized);
+
+    const selectedRecipe = this.recipes.find(recipe => recipe.id === primaryCandidate.id)
+      || this.recipes.find(recipe => recipe.name.toLowerCase() === primaryCandidate.name.toLowerCase());
+    if (selectedRecipe) {
+      this.selectedRecipeId = selectedRecipe.id;
+      this.switchView('diary', document.querySelector('[data-view="diary"]'));
+      this.renderRecipeDetail();
+    }
+
     this.setStatus(this.getImportSummaryMessage(summary, normalized.length), true);
   }
 
@@ -2055,8 +2065,21 @@ class RecipeApp {
 
   setStatus(message, isPositive = false, autoClearMs = 0) {
     const root = document.getElementById('status-message');
-    root.textContent = message;
-    root.classList.toggle('ok', Boolean(isPositive));
+    const text = String(message || '').trim();
+    const shouldShow = /(?:failed|error|invalid|required|could not|unable|not initialized|not connected|check connection)/i.test(text);
+
+    if (!shouldShow) {
+      root.textContent = '';
+      root.classList.remove('ok');
+      if (this.statusTimer) {
+        clearTimeout(this.statusTimer);
+        this.statusTimer = null;
+      }
+      return;
+    }
+
+    root.textContent = text;
+    root.classList.remove('ok');
 
     if (this.statusTimer) {
       clearTimeout(this.statusTimer);
@@ -2064,7 +2087,7 @@ class RecipeApp {
     }
 
     if (autoClearMs > 0) {
-      const snapshot = message;
+      const snapshot = text;
       this.statusTimer = setTimeout(() => {
         if (root.textContent === snapshot) {
           root.textContent = '';
